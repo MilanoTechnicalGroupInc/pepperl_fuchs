@@ -100,6 +100,12 @@ private:
     //! @returns The HTTP status code or 0 in case of an error
     int httpGet(const std::string request_path, std::string& header, std::string& content);
 
+    //! Send a sensor specific HTTP-Command, returning parse tree (so as to be thread-safe-ish)
+    //! @param cmd command name
+    //! @param keys_values parameter->value map, which is encoded in the GET-request: ?p1=v1&p2=v2
+    //! @param resp_pt property tree representing the JSON data of the response
+    bool sendHttpCommand(const std::string cmd, const std::map< std::string, std::string > param_values, boost::property_tree::ptree & resp_pt );
+
     //! Send a sensor specific HTTP-Command
     //! @param cmd command name
     //! @param keys_values parameter->value map, which is encoded in the GET-request: ?p1=v1&p2=v2
@@ -110,6 +116,11 @@ private:
     //! @param param Parameter
     //! @param value Value
     bool sendHttpCommand(const std::string cmd, const std::string param = "", const std::string value = "" );
+
+    //! Check the error code and text of the given JSON
+    //! @param pt JSON property tree
+    //! @returns False in case of an error, True otherwise
+    static bool checkErrorCode(boost::property_tree::ptree pt);
 
     //! Check the error code and text of the returned JSON by the last request
     //! @returns False in case of an error, True otherwise
@@ -123,9 +134,6 @@ private:
 
     //! Returned JSON as property_tree
     boost::property_tree::ptree pt_;
-
-    //! HTTP-Status code of last request
-    int http_status_code_;
 
 };
 }

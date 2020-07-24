@@ -33,6 +33,7 @@
 #include <string>
 #include <vector>
 #include <map>
+#include <thread>
 #include <boost/optional.hpp>
 #include <pepperl_fuchs_r2000/protocol_info.h>
 #include <pepperl_fuchs_r2000/packet_structure.h>
@@ -136,7 +137,9 @@ public:
     bool setParameter( const std::string& name, const std::string& value );
 
     //! Feed the watchdog with the current handle ID, to keep the data connection alive
-    void feedWatchdog(bool feed_always = false);
+    //! @param feed_always force feed the watchdog even if it's not hungry (neglect time since last feeding)
+    //! @param use_thread feed the wathdog in a separate thread for the purpose to avoid blocking the current thread
+    void feedWatchdog(bool feed_always = false, bool use_thread = true);
 
 private:
     //! HTTP/JSON interface of the scanner
@@ -156,6 +159,15 @@ private:
 
     //! Feeding interval (in seconds)
     double food_timeout_;
+
+    //! Thread object for watchdog feeding thread
+    std::thread watchdog_thread_;
+
+    //! Function for watchdog feeding thread
+    void watchdogTask();
+
+    //! Communication between the main thread and watchdog thread
+    bool watchdog_do_now_ = false;
 
     //! Handle information about data connection
     boost::optional<HandleInfo> handle_info_;
