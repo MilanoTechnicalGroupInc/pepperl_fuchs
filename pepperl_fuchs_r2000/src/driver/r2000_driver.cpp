@@ -90,6 +90,8 @@ bool R2000Driver::startCapturingTCP(int start_angle, int max_points)
 
     food_timeout_ = std::floor(std::max((handle_info_->watchdog_timeout/1000.0/3.0),1.0));
     is_capturing_ = true;
+
+    watchdog_thread_ = std::thread([this] { this->watchdogTask(); });
     return true;
 }
 
@@ -110,6 +112,8 @@ bool R2000Driver::startCapturingUDP(int start_angle, int max_points)
 
     food_timeout_ = std::floor(std::max((handle_info_->watchdog_timeout/1000.0/3.0),1.0));
     is_capturing_ = true;
+
+    watchdog_thread_ = std::thread([this] { this->watchdogTask(); });
     return true;
 }
 
@@ -127,9 +131,26 @@ bool R2000Driver::stopCapturing()
     data_receiver_ = 0;
 
     is_capturing_ = false;
+    if(watchdog_thread_.joinable())
+        watchdog_thread_.join();
     return_val = return_val && command_interface_->releaseHandle(handle_info_->handle);
     handle_info_ = boost::optional<HandleInfo>();
     return return_val;
+}
+
+//-----------------------------------------------------------------------------
+void R2000Driver::watchdogTask() {
+    // Check every 100ms if we've been requested to feed the watchdog
+    const long check_period_ms = 100;
+    struct timespec check_period = {0, check_period_ms*1000000};
+    while(is_capturing_) {
+        nanosleep(&check_period, NULL);
+        if(watchdog_do_now_) {
+            // Do the actual feeding
+            feedWatchdog(true, false);
+            watchdog_do_now_ = false;
+        }
+    }
 }
 
 //-----------------------------------------------------------------------------
@@ -267,15 +288,22 @@ bool R2000Driver::setParameter(const std::string &name, const std::string &value
 }
 
 //-----------------------------------------------------------------------------
-void R2000Driver::feedWatchdog(bool feed_always)
+void R2000Driver::feedWatchdog(bool feed_always, bool use_thread)
 {
     const double current_time = std::time(0);
 
     if( (feed_always || watchdog_feed_time_<(current_time-food_timeout_)) && handle_info_ && command_interface_  )
     {
-        if( !command_interface_->feedWatchdog(handle_info_->handle) )
-            std::cerr << "ERROR: Feeding watchdog failed!" << std::endl;
-        watchdog_feed_time_ = current_time;
+        if( use_thread ) {
+            watchdog_feed_time_ = current_time;
+            watchdog_do_now_ = true;
+        } else {
+            if( !command_interface_->feedWatchdog(handle_info_->handle) ) {
+                std::cerr << "ERROR: Feeding watchdog failed!" << std::endl;
+            } else {
+                watchdog_feed_time_ = current_time;
+            }
+        }
     }
 }
 

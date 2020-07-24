@@ -20,7 +20,6 @@ HttpCommandInterface::HttpCommandInterface(const std::string &http_host, int htt
 {
     http_host_ = http_host;
     http_port_ = http_port;
-    http_status_code_ = 0;
 }
 
 //-----------------------------------------------------------------------------
@@ -121,7 +120,7 @@ int HttpCommandInterface::httpGet(const std::string request_path, std::string &h
 }
 
 //-----------------------------------------------------------------------------
-bool HttpCommandInterface::sendHttpCommand(const std::string cmd, const std::map<std::string, std::string> param_values)
+bool HttpCommandInterface::sendHttpCommand(const std::string cmd, const std::map<std::string, std::string> param_values, boost::property_tree::ptree & resp_pt)
 {
     // Build request string
     std::string request_str = "/cmd/" + cmd + "?";
@@ -132,13 +131,13 @@ bool HttpCommandInterface::sendHttpCommand(const std::string cmd, const std::map
 
     // Do HTTP request
     std::string header, content;
-    http_status_code_ = httpGet(request_str,header,content);
+    int http_status_code_ = httpGet(request_str,header,content);
 
     // Try to parse JSON response
     try
     {
         std::stringstream ss(content);
-        boost::property_tree::json_parser::read_json(ss,pt_);
+        boost::property_tree::json_parser::read_json(ss,resp_pt);
     }
     catch (std::exception& e)
     {
@@ -151,6 +150,12 @@ bool HttpCommandInterface::sendHttpCommand(const std::string cmd, const std::map
         return false;
     else
         return true;
+}
+
+//-----------------------------------------------------------------------------
+bool HttpCommandInterface::sendHttpCommand(const std::string cmd, const std::map<std::string, std::string> param_values)
+{
+    return sendHttpCommand(cmd, param_values, pt_);
 }
 
 //-----------------------------------------------------------------------------
@@ -206,9 +211,15 @@ std::map< std::string, std::string > HttpCommandInterface::getParameters(const s
 //-----------------------------------------------------------------------------
 bool HttpCommandInterface::checkErrorCode()
 {
+    return checkErrorCode(pt_);
+}
+
+//-----------------------------------------------------------------------------
+bool HttpCommandInterface::checkErrorCode(boost::property_tree::ptree pt)
+{
     // Check the JSON response if error_code == 0 && error_text == success
-    boost::optional<int> error_code = pt_.get_optional<int>("error_code");
-    boost::optional<std::string> error_text = pt_.get_optional<std::string>("error_text");
+    boost::optional<int> error_code = pt.get_optional<int>("error_code");
+    boost::optional<std::string> error_text = pt.get_optional<std::string>("error_text");
     if( !error_code || (*error_code) != 0 || !error_text || (*error_text) != "success" )
     {
         if( error_text )
@@ -369,7 +380,10 @@ bool HttpCommandInterface::stopScanOutput(const std::string& handle)
 //-----------------------------------------------------------------------------
 bool HttpCommandInterface::feedWatchdog(const std::string &handle)
 {
-    if( !sendHttpCommand("feed_watchdog", "handle", handle) || !checkErrorCode() )
+    boost::property_tree::ptree wd_pt; // Need our own specific ptree here because of threading
+    std::map<std::string, std::string> param_values;
+    param_values["handle"] = handle;
+    if( !sendHttpCommand("feed_watchdog", param_values, wd_pt) || !checkErrorCode(wd_pt) )
         return false;
     return true;
 }

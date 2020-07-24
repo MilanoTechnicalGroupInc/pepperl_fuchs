@@ -163,8 +163,24 @@ bool ScanDataReceiver::handleNextPacket()
     // Lock internal outgoing data queue, automatically unlocks at end of function
     std::unique_lock<std::mutex> lock(data_mutex_);
 
+    // Check if we need a new scan container (packet #1 or scan number incremented by 1)
+    bool new_scan = scan_data_.empty();
+    if( !new_scan ) {
+        auto & hs = scan_data_.back().headers;
+        if( !hs.empty() ) {
+            auto & h = hs.back();
+            if( p->header.scan_number != h.scan_number ) {
+                if( p->header.packet_number == 1 || p->header.scan_number == h.scan_number+1 ) {
+                    new_scan = true;
+                } else {
+                    // non-matching scan number, but neither of the conditions to start a new scan met; discard packet
+                    return true;
+                }
+            }
+        }
+    }
     // Create new scan container if necessary
-    if( p->header.packet_number == 1 || scan_data_.empty() )
+    if( new_scan )
     {
         scan_data_.emplace_back();
         if( scan_data_.size()>100 )
@@ -192,6 +208,13 @@ bool ScanDataReceiver::handleNextPacket()
 
     // Save header
     scandata.headers.push_back(p->header);
+
+    // Return early if we expect this to be the last
+    if( p->header.num_points_scan == p->header.first_index + p->header.num_points_packet ) {
+        // This scan should be done, push a new one to the stack and notify the queue
+        scan_data_.emplace_back();
+        data_notifier_.notify_one();
+    }
 
     return true;
 }
